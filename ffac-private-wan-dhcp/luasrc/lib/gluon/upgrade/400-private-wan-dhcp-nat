@@ -1,0 +1,79 @@
+#!/usr/bin/lua
+
+local uci = require('simple-uci').cursor()
+
+-- IPv4 für DHCP vergeben auf WAN-Interface
+uci:set('network', 'wan', 'proto', 'static')
+uci:set('network', 'wan', 'ipaddr', '192.168.222.1')
+uci:set('network', 'wan', 'netmask', '255.255.255.0')
+-- IPv6 /64 netzwerk auf cellular anfragen
+uci:set('network', 'cellular', 'ip6assign', '64')
+uci:commit('network')
+
+-- Forwarding über das wwan-Interface erlauben
+uci:set('firewall', '@zone[1]', 'forward', 'ACCEPT')
+
+-- Funktion um zu prüfen, ob eine Regel bereits existiert
+local function rule_exists(name)
+    local exists = false
+    uci:foreach('firewall', 'rule', function(section)
+        if section.name == name then
+            exists = true
+            return false
+        end
+    end)
+    return exists
+end
+
+-- DHCP in Firewall auf WAN erlauben
+if not rule_exists('Allow-DHCP-WAN') then
+    uci:add('firewall', 'rule')
+    uci:set('firewall', '@rule[-1]', 'name', 'Allow-DHCP-WAN')
+    uci:set('firewall', '@rule[-1]', 'src', 'wan')
+    uci:set('firewall', '@rule[-1]', 'proto', 'udp')
+    uci:set('firewall', '@rule[-1]', 'src_port', '67 68')
+    uci:set('firewall', '@rule[-1]', 'dest_port', '67 68')
+    uci:set('firewall', '@rule[-1]', 'target', 'ACCEPT')
+end
+
+-- DNS in Firewall auf WAN erlauben
+if not rule_exists('Allow-DNS-WAN') then
+    uci:add('firewall', 'rule')
+    uci:set('firewall', '@rule[-1]', 'name', 'Allow-DNS-WAN')
+    uci:set('firewall', '@rule[-1]', 'src', 'wan')
+    uci:set('firewall', '@rule[-1]', 'proto', 'tcp udp')
+    uci:set('firewall', '@rule[-1]', 'dest_port', '53')
+    uci:set('firewall', '@rule[-1]', 'target', 'ACCEPT')
+end
+
+-- Funktion um zu prüfen, ob ein Forwarding bereits existiert
+local function forwarding_exists(src, dest)
+    local exists = false
+    uci:foreach('firewall', 'forwarding', function(section)
+        if section.src == src and section.dest == dest then
+            exists = true
+            return false
+        end
+    end)
+    return exists
+end
+
+-- NAT von wan auf wwan einrichten
+if not forwarding_exists('wan', 'wwan') then
+    uci:add('firewall', 'forwarding')
+    uci:set('firewall', '@forwarding[-1]', 'src', 'wan')
+    uci:set('firewall', '@forwarding[-1]', 'dest', 'wwan')
+end
+
+uci:commit('firewall')
+
+-- DHCP-Server einstellen für wan
+uci:set('dhcp', 'wan', 'start', '100')
+uci:set('dhcp', 'wan', 'limit', '150')
+uci:set('dhcp', 'wan', 'leasetime', '12h')
+uci:set('dhcp', 'wan', 'force', '1')
+local dhcp_options = uci:get_list('dhcp', 'wan', 'dhcp_option') or {}
+table.insert(dhcp_options, '6,9.9.9.9')
+uci:set('dhcp', 'wan', 'dhcp_option', dhcp_options)
+uci:delete('dhcp', 'wan', 'ignore')
+uci:commit('dhcp')
