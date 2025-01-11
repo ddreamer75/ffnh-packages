@@ -1,8 +1,9 @@
 include $(TOPDIR)/rules.mk
 
+
 PKG_NAME:=ffnh-ssh-admin-enable
 
-include ../gluon.mk
+include $(TOPDIR)/../package/gluon.mk
 
 define Package/ffnh-ssh-admin-enable
   TITLE:=UI for activate admin-ssh-keys mode flag in the wizard
