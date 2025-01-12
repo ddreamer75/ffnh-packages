@@ -6,8 +6,8 @@ msgid ""
 "Activation gives our administrators access to your node"
 
 msgstr ""
-"Fernwartung oder Unterstüzung durch Freifunk-Nordhessen e.V. erlauben. "
-"Durch die Aktivierung erhalten unsere Adminstratoren Zugriff auf Ihren Knoten."
+"Fernwartung / Unterstüzung durch Freifunk-Nordhessen e.V. erlauben. "
+"Durch die Aktivierung erhalten unsere Adminstratoren Zugriff auf deinen Knoten."
 
 msgid "Enable support"
 msgstr "Unterstützung aktivieren"
