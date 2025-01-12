@@ -1,16 +1,15 @@
 return function(form, uci)
 	local platform = require 'gluon.platform'
-	local ffda_ssh = require 'ffda-ssh-manager.settings'
 
   local pkg_i18n = i18n 'ffnh-ssh-admin-enable'
 
   local section = form:section(Section, nil, pkg_i18n.translate(
-		"Allow remote maintenance or support from Freifunk-Nordhessen e.V"
+		"Allow remote maintenance or support from Freifunk-Nordhessen e.V. "
       .. "Activation gives our administrators access to your node"
 	))
 
   local ssh = section:option(Flag, 'enabled', pkg_i18n.translate("Enable support"))
-  ssh.default = uci:get_bool('ddda-ssh-manager', 'settings', 'enabled')
+  ssh.default = uci:get_bool('ffda-ssh-manager', 'settings', 'enabled')
 
   function ssh:write()
     uci:set('ffda-ssh-manager', 'settings', 'enabled', data)
