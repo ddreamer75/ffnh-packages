@@ -2,12 +2,12 @@ msgid ""
 msgstr "Content-Type: text/plain; charset=UTF-8\n"
 
 msgid ""
-"Allow remote maintenance or support from Freifunk-Nordhessen e.V"
+"Allow remote maintenance or support from Freifunk-Nordhessen e.V. "
 "Activation gives our administrators access to your node"
 
 msgstr ""
-"Fernwartung oder Unterstüzung durch Freifunk-Nordhessen e.V. erlauben"
-"Durch Aktivierung erhalten unsere Adminstratoren Zugriff auf Ihren Knoten"
+"Fernwartung oder Unterstüzung durch Freifunk-Nordhessen e.V. erlauben. "
+"Durch die Aktivierung erhalten unsere Adminstratoren Zugriff auf Ihren Knoten."
 
 msgid "Enable support"
 msgstr "Unterstützung aktivieren"
