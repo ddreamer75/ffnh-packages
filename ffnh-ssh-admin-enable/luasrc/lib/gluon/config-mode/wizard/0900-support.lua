@@ -11,7 +11,7 @@ return function(form, uci)
   local ssh = section:option(Flag, 'enabled', pkg_i18n.translate("Enable support"))
   ssh.default = uci:get_bool('ffda-ssh-manager', 'settings', 'enabled')
 
-  function ssh:write()
+  function ssh:write(data)
     uci:set('ffda-ssh-manager', 'settings', 'enabled', data)
     uci:save('ffda-ssh-manager')
   end
