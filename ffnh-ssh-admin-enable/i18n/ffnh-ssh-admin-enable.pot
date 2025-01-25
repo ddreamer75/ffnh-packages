@@ -1,0 +1,11 @@
+msgid ""
+msgstr "Content-Type: text/plain; charset=UTF-8\n"
+
+msgid ""
+"Allow remote maintenance or support from Freifunk-Nordhessen e.V. "
+"Activation gives our administrators access to your node"
+
+msgstr ""
+
+msgid "Enable support"
+msgstr ""

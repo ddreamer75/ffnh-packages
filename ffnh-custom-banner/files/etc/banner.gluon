@@ -1,0 +1,27 @@
+
+     ______          _ ____            __
+    / ____/_______  (_) __/_  ______  / /__
+   / /_  / ___/ _ \/ / /_/ / / / __ \/ //_/
+  / __/ / /  /  __/ / __/ /_/ / / / / ,<
+ /_/   /_/   \___/_/_/  \__,_/_/ /_/_/|_|
+     _   __               ____
+    / | / /___  _________/ / /_  ___  _____________  ____
+   /  |/ / __ \/ ___/ __  / __ \/ _ \/ ___/ ___/ _ \/ __ \
+  / /|  / /_/ / /  / /_/ / / / /  __(__  |__  )  __/ / / /
+ /_/ |_/\____/_/   \__,_/_/ /_/\___/____/____/\___/_/ /_/
+
+ Freifunk Nordhessen e.V. - freifunk-nordhessen.de
+---------------------------------------------------------
+ Community: %SITE_NAME% 
+ Firmware:  %FIRMWARE_VERSION%
+ Domain:    %DOMAIN%
+ Model:     %MODEL%
+ Node Info: %MAP_LINK%
+ Contact:   %CONTACT%
+ Important Commands:
+  - autoupdater     (run autoupdater)
+  - logread         (show device log)
+  - pretty-hostname (show/edit hostname)
+ https://github.com/freifunk-gluon/gluon/wiki/Commandline-administration
+---------------------------------------------------------
+

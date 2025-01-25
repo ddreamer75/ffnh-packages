@@ -1,0 +1,29 @@
+#!/bin/sh
+
+## Simple WLAN Scan tool
+## Michael Hertel - Freifunk Nordhessen e.V.
+
+# check if device has wireless interfaces
+if [ ! -d /sys/class/ieee80211 ] || [ "$(ls -l /sys/class/ieee80211/ | wc -l)" -eq 0 ]; then
+        echo 'Device hat kein WLAN.'
+        exit
+fi
+
+for i in $(ls /sys/class/net/ | grep "\(client\|mesh\|owe\)[0-9]"); do
+        if [ -n "$WLAN_INTERFACES" ]; then
+                WLAN_INTERFACES="$WLAN_INTERFACES $i"
+        else
+                WLAN_INTERFACES="$i"
+        fi
+done
+
+
+if [ -z "$1" ] || !(echo "$WLAN_INTERFACES" | grep -q "$1"); then
+        echo -e '\nKein g..ltiges WLAN-Interface angegeben.\nFolgende Interfaces stehen zur Verf..gung:\n'
+
+        echo $WLAN_INTERFACES | sed 's/ /,/g'
+else
+        echo -e "\nStarte WLAN-Scan auf $1 (Bitte warten)...\n"
+        logger -t "ffnh-wlan-scan" -p 1 "start wireless scan on $1"
+        iw $1 scan |egrep 'signal:|SSID| channel:'
+fi
