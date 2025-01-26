@@ -24,6 +24,6 @@ if [ -z "$1" ] || !(echo "$WLAN_INTERFACES" | grep -q "$1"); then
         echo $WLAN_INTERFACES | sed 's/ /,/g'
 else
         echo -e "\nStart Wi-Fi scan on $1 (please wait)...\n"
-        logger -t "ffnh-wlan-scan" -p 1 "start wireless scan on $1"
+        logger -t "ffnh-wlan-scan" -p 1 "start Wi-Fi scan on $1"
         iw $1 scan |egrep 'signal:|SSID| channel:'
 fi
