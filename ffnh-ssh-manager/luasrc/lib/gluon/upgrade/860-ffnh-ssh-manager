@@ -108,11 +108,6 @@ local function site_defaults()
 	local site_default_enabled = site.ssh_manager.defaults.enabled()
 	local site_default_groups = site.ssh_manager.defaults.groups()
 
-	-- Only set defaults if not already configured
-	if manager_configured() then
-		return
-	end
-
 	-- Disable if no defaults defined
 	uci:set(uci_package, uci_section, uci_key_enabled, site_default_enabled == true)
 
