@@ -34,10 +34,11 @@ return {
 ```
 
 Only the first matching mapping file is applied, allowing refined vendor‑specific behavior.
-✔ System‑wide persistent application
+
+### ✔ System‑wide persistent application
 
 The Wizard writes all user selections into:
-/etc/config/gluon-led-config
+`/etc/config/gluon-led-config` 
 
 The backend service package gluon-led-config then applies:
 
