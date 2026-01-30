@@ -1,165 +1,320 @@
+-- - generischer Sysfs-Erkennung
+-- - Mehrfarb-Gruppierung
+-- - Drop‑in Mapping (led-map.d/*.lua)
+-- - modellgenauer Filterung & UI-Optionen
 
-local fs   = require('nixio.fs')
-local util = require('gluon.util')
-local i18n = require('gluon.i18n')
-local uci  = require('simple-uci').cursor()
+local fs   = require("nixio.fs")
+local util = require("gluon.util")
+local i18n = require("gluon.i18n")
+local uci  = require("simple-uci").cursor()
 
--- Helpers -------------------------------------------------------------
+------------------------------------------------------------
+-- BOARD-INFO (ubus) + Fallback /tmp/sysinfo/board_name
+------------------------------------------------------------
+local function get_board_info()
+  local board_name, model
+
+  local ok, ubus = pcall(require, "ubus")
+  if ok and ubus then
+    local conn = ubus.connect()
+    if conn then
+      local info = conn:call("system", "board", {})
+      if info then
+        board_name = info.board_name or info.board
+        model = info.model
+      end
+      conn:close()
+    end
+  end
+
+  if (not board_name or board_name == "") and fs.access("/tmp/sysinfo/board_name") then
+    board_name = (fs.readfile("/tmp/sysinfo/board_name") or ""):gsub("%s+$", "")
+  end
+
+  return board_name or "", model or ""
+end
+
+------------------------------------------------------------
+-- LED LIST + Gruppierung (Mehrfarb-LEDs)
+------------------------------------------------------------
+local COLOR_SET = {
+  blue=true, white=true, green=true, orange=true, amber=true,
+  red=true, yellow=true, purple=true
+}
 
 local function list_leds()
   local t = {}
-  for name in fs.dir('/sys/class/leds') or function() end do
-    -- Exkludiere reine Power/SYS LEDs optional, falls gewünscht:
-    -- if not name:match(':power$') and not name:match(':system$') then
-      table.insert(t, name)
-    -- end
+  for name in fs.dir("/sys/class/leds") or function() end do
+    t[#t+1] = name
   end
   table.sort(t)
   return t
 end
 
--- Gruppierungslogik für Mehrfarb-LEDs:
--- Ubiquiti/UniFi typischerweise: "ubnt:<color>:dome"
-local function group_multicolor(leds)
-  local groups = {}     -- key -> { colors = {sysfs...}, display = ... }
-  local singles = {}    -- LEDs ohne offensichtliche Multi-Group
+local function split_colon(s)
+  local a = {}
+  for p in s:gmatch("[^:]+") do a[#a+1] = p end
+  return a
+end
 
-  local function mkkey(parts)
-    -- für "ubnt:blue:dome" => key "ubnt:dome"
-    if #parts >= 3 then return parts[1] .. ':' .. parts[3] end
-    return nil
+local function find_color(parts)
+  for _, p in ipairs(parts) do
+    if COLOR_SET[p] then return p end
+  end
+end
+
+local function group_multicolor(leds)
+  local groups = {}
+  local singles = {}
+  local seen = {}
+
+  for _, name in ipairs(leds) do
+    local parts = split_colon(name)
+    local color = find_color(parts)
+    if color then
+      local keyp = util.deepcopy(parts)
+      for i,p in ipairs(keyp) do
+        if COLOR_SET[p] then keyp[i] = "*" end
+      end
+      local key = table.concat(keyp, ":")
+
+      groups[key] = groups[key] or {
+        colors = {},
+        key = key,
+        label = (parts[1] or key) .. ":" .. (parts[#parts] or "")
+      }
+      table.insert(groups[key].colors, name)
+      seen[name] = true
+    end
   end
 
   for _, name in ipairs(leds) do
-    local parts = {}
-    for p in name:gmatch('[^:]+') do table.insert(parts, p) end
-    local key = mkkey(parts)
-    if key and parts[1] == 'ubnt' then
-      groups[key] = groups[key] or { colors = {}, display = key }
-      table.insert(groups[key].colors, name)
+    if not seen[name] then singles[#singles+1] = name end
+  end
+
+  for k,g in pairs(groups) do
+    if #g.colors < 2 then
+      for _,n in ipairs(g.colors) do singles[#singles+1] = n end
+      groups[k] = nil
     else
-      table.insert(singles, name)
+      table.sort(g.colors)
     end
   end
+
+  table.sort(singles)
   return groups, singles
 end
 
--- Wizard-Form ---------------------------------------------------------
+------------------------------------------------------------
+-- LED-Label für UI
+------------------------------------------------------------
+local function nice_color_label(sysfs_name)
+  local c = sysfs_name:match(":(%a+):") or sysfs_name:match("^%a+:(%a+)$")
+  if c and COLOR_SET[c] then
+    return c:sub(1,1):upper() .. c:sub(2)
+  end
+  return sysfs_name
+end
 
+------------------------------------------------------------
+-- DROP-IN MAPPING: led-map.d/*.lua
+------------------------------------------------------------
+local function load_led_maps()
+  local maps = {}
+  local dir = "/lib/gluon/config-mode/led-map.d"
+  if not fs.stat(dir, "type") then return maps end
+
+  for file in fs.dir(dir) or function() end do
+    if file:match("%.lua$") then
+      local ok, mod = pcall(dofile, dir .. "/" .. file)
+      if ok and type(mod) == "table" and mod.match and mod.allow then
+        mod.__file = file
+        maps[#maps+1] = mod
+      end
+    end
+  end
+
+  table.sort(maps, function(a,b) return (a.__file or "") < (b.__file or "") end)
+  return maps
+end
+
+local LED_MAPS = load_led_maps()
+
+local function pick_map(board_name, model)
+  for _, m in ipairs(LED_MAPS) do
+    if (board_name and board_name:match(m.match)) or
+       (model and model:match(m.match))
+    then
+      return m
+    end
+  end
+end
+
+local function allowed_name(name, allow)
+  for _, a in ipairs(allow) do
+    if a:find(":") then
+      if a == name then return true end
+    else
+      if name:find(":"..a..":") then return true end
+    end
+  end
+  return false
+end
+
+local function apply_allow(groups, singles, allow)
+  if not allow or #allow == 0 then return groups, singles end
+
+  for k,g in pairs(groups) do
+    local kept = {}
+    for _,n in ipairs(g.colors) do
+      if allowed_name(n, allow) then kept[#kept+1] = n end
+    end
+
+    if #kept >= 2 then
+      g.colors = kept
+    else
+      groups[k] = nil
+      if #kept == 1 then singles[#singles+1] = kept[1] end
+    end
+  end
+
+  local s2 = {}
+  for _,n in ipairs(singles) do
+    if allowed_name(n, allow) then s2[#s2+1] = n end
+  end
+
+  if next(groups) == nil and #s2 == 0 then
+    return groups, singles
+  end
+
+  return groups, s2
+end
+
+------------------------------------------------------------
+-- WIZARD-FORMULAR
+------------------------------------------------------------
 return function(form, uci_cursor)
-  local f = form:section(Section, i18n.translate('LED-Einstellungen'),
-      i18n.translate('Farbe und Helligkeit der Status-LED konfigurieren. ' ..
-                      'Bei 0 % wird die LED dauerhaft ausgeschaltet.'))
+  local f = form:section(
+    Section,
+    i18n.translate("LED-Einstellungen"),
+    i18n.translate(
+      "Farbe (falls verfügbar) und Helligkeit der Status-LED konfigurieren. " ..
+      "Bei 0 % wird die LED dauerhaft ausgeschaltet."
+    )
+  )
 
-  local leds = list_leds() -- /sys/class/leds
+  -- BOARD-INFOS
+  local board_name, model = get_board_info()
+
+  -- SYSFS LEDs
+  local leds = list_leds()
   local groups, singles = group_multicolor(leds)
 
-  -- Auswahlmodus: Multi-Color-Gruppe (z. B. ubnt:*:dome) ODER einzelne LED
-  local mode = f:option(ListValue, 'mode', i18n.translate('LED-Typ'))
-  mode:value('auto', i18n.translate('Automatisch erkennen'))
-  mode:value('single', i18n.translate('Einfarbige LED wählen'))
-  mode:value('group', i18n.translate('Mehrfarbige LED-Gruppe wählen'))
-  mode.default = 'auto'
+  -- DROP-IN MAP anwenden
+  local map = pick_map(board_name, model)
+  if map then
+    groups, singles = apply_allow(groups, singles, map.allow)
 
-  -- Gruppe wählen (nur wenn vorhanden)
-  local group = f:option(ListValue, 'group', i18n.translate('Mehrfarbige LED-Gruppe'))
-  for key, _ in pairs(groups) do
-    group:value(key, key)
+    -- optionale Reihenfolge
+    if map.order then
+      for _,g in pairs(groups) do
+        table.sort(g.colors, function(a,b)
+          local function idx(x)
+            for i,c in ipairs(map.order) do
+              if x:find(":"..c..":") then return i end
+            end
+            return 999
+          end
+          local ia, ib = idx(a), idx(b)
+          if ia ~= ib then return ia < ib else return a < b end
+        end)
+      end
+    end
   end
 
-  -- Farbe innerhalb der Gruppe
-  local color = f:option(ListValue, 'color', i18n.translate('Farbe'))
-  color:depends('mode', 'group')
-  color:depends('mode', 'auto') -- falls auto -> wir zeigen Farbe wenn Gruppe gewählt ist
+  local have_groups = next(groups) ~= nil
+  local have_singles = #singles > 0
 
-  -- Fülle Farben dynamisch (zur Laufzeit im write())
-  function color:cfgvalue()
-    return nil -- handled in write()
+  ------------------------------------------------------------
+  -- UI OPTIONS
+  ------------------------------------------------------------
+  local brightness = f:option(Value, "brightness", i18n.translate("Helligkeit (%)"))
+  brightness.datatype = "uinteger"
+  brightness.default  = "30"
+
+  local group, color, single
+
+  if have_groups then
+    group = f:option(ListValue, "group", i18n.translate("Mehrfarbige LED-Gruppe"))
+    for k,g in pairs(groups) do group:value(k, g.label) end
+
+    color = f:option(ListValue, "color", i18n.translate("Farbe"))
+    function color:cfgvalue() return nil end
   end
 
-  -- Einfarbige LED direkt wählen
-  local single = f:option(ListValue, 'single', i18n.translate('LED (einfarbig)'))
-  single:depends('mode', 'single')
-  single:depends('mode', 'auto')
-  for _, name in ipairs(singles) do
-    single:value(name, name)
+  if have_singles then
+    single = f:option(ListValue, "single", i18n.translate("LED (einfarbig)"))
+    for _,n in ipairs(singles) do single:value(n, n) end
   end
 
-  -- Helligkeit in Prozent (0..100)
-  local brightness = f:option(Value, 'brightness', i18n.translate('Helligkeit (%)'))
-  brightness.datatype = 'uinteger'
-  brightness.default  = '30'
-
-  -- Schreiben/Commit
+  ------------------------------------------------------------
+  -- WRITE / COMMIT
+  ------------------------------------------------------------
   function f:write()
-    -- Erzeuge/überschreibe eine einzige UCI-Section "config led 'main'"
-    local pkg = 'gluon-led-config'
-    local typ = 'led'
-    local sid = util.first(uci_cursor:section(pkg, typ)) or uci_cursor:add(pkg, typ, 'main')
+    local pkg = "gluon-led-config"
+    local typ = "led"
+    local sid = util.first(uci_cursor:section(pkg, typ))
+    if not sid then
+      sid = uci_cursor:add(pkg, typ, "main")
+    end
 
-    -- Ermitteln der Ziel-LED (sysfs) + Off-Liste bei Gruppen
-    local selected_sysfs = nil
+    local pct = tonumber(brightness:data()) or 0
+    if pct < 0 then pct = 0 elseif pct > 100 then pct = 100 end
+
+    local selected_sysfs
     local off_leds = {}
 
-    local selected_mode = mode:data()
-    local selected_group = group:data()
-    local selected_color = color:data()
-    local selected_single = single:data()
-    local pct = tonumber(brightness:data()) or 0
+    if have_groups then
+      local sel_group = group:data() or next(groups)
+      local g = groups[sel_group]
 
-    -- Fülle Farbliste für gewählte Gruppe
-    local function fill_color_list(key)
-      color:reset_values()
-      if key and groups[key] then
-        for _, name in ipairs(groups[key].colors) do
-          local c = name:match('^ubnt:([^:]+):')
-          color:value(name, c or name)
+      if g and color then
+        color:reset_values()
+        for _,n in ipairs(g.colors) do
+          color:value(n, nice_color_label(n))
+        end
+      end
+
+      local cval = color and color:data() or nil
+      local found = false
+      if g then
+        for _,n in ipairs(g.colors) do
+          if n == cval then found = true break end
+        end
+        selected_sysfs = found and cval or g.colors[1]
+
+        for _,n in ipairs(g.colors) do
+          if n ~= selected_sysfs then off_leds[#off_leds+1] = n end
         end
       end
     end
 
-    -- Auto-Heuristik: Falls es Gruppen gibt, nimm die erste; sonst single
-    if selected_mode == 'auto' then
-      local any_group = next(groups)
-      if any_group then
-        selected_mode = 'group'
-        selected_group = selected_group or next(groups)
-        fill_color_list(selected_group)
-        selected_color = selected_color or groups[selected_group].colors[1]
-      else
-        selected_mode = 'single'
-        selected_single = selected_single or (singles[1] or '')
-      end
+    if not selected_sysfs and have_singles and single then
+      selected_sysfs = single:data() or singles[1]
     end
 
-    if selected_mode == 'group' then
-      selected_group = selected_group or next(groups)
-      fill_color_list(selected_group)
-      selected_sysfs = selected_color
-      -- Off-Liste = alle anderen Farben der Gruppe
-      for _, name in ipairs(groups[selected_group].colors) do
-        if name ~= selected_sysfs then table.insert(off_leds, name) end
-      end
-    elseif selected_mode == 'single' then
-      selected_sysfs = selected_single
-      off_leds = {} -- nichts auszuschalten
-    end
-
-    -- UCI schreiben
     if selected_sysfs then
-      uci_cursor:set(pkg, sid, 'sysfs', selected_sysfs)
+      uci_cursor:set(pkg, sid, "sysfs", selected_sysfs)
     end
-    uci_cursor:set(pkg, sid, 'brightness', tostring(pct))
+    uci_cursor:set(pkg, sid, "brightness", tostring(pct))
 
-    -- Vorherige off_leds löschen und neu setzen
-    uci_cursor:delete(pkg, sid, 'off_leds')
-    for _, name in ipairs(off_leds) do
-      uci_cursor:add_list(pkg, sid, 'off_leds', name)
+    uci_cursor:delete(pkg, sid, "off_leds")
+    for _,n in ipairs(off_leds) do
+      uci_cursor:add_list(pkg, sid, "off_leds", n)
     end
 
-    -- Commit erst am Ende (Wizard commit tet seitenübergreifend)
     uci_cursor:commit(pkg)
   end
 
-  return {'gluon-led-config'}
+  return {"gluon-led-config"}
 end
