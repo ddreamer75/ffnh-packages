@@ -1,0 +1,29 @@
+msgid "LED-Einstellungen"
+msgstr "LED-Einstellungen"
+
+msgid "Farbe und Helligkeit der Status-LED konfigurieren. Bei 0 % wird die LED dauerhaft ausgeschaltet."
+msgstr "Farbe und Helligkeit der Status-LED konfigurieren. Bei 0 % wird die LED dauerhaft ausgeschaltet."
+
+msgid "LED-Typ"
+msgstr "LED-Typ"
+
+msgid "Automatisch erkennen"
+msgstr "Automatisch erkennen"
+
+msgid "Einfarbige LED wählen"
+msgstr "Einfarbige LED wählen"
+
+msgid "Mehrfarbige LED-Gruppe wählen"
+msgstr "Mehrfarbige LED-Gruppe wählen"
+
+msgid "Mehrfarbige LED-Gruppe"
+msgstr "Mehrfarbige LED-Gruppe"
+
+msgid "Farbe"
+msgstr "Farbe"
+
+msgid "LED (einfarbig)"
+msgstr "LED (einfarbig)"
+
+msgid "Helligkeit (%)"
+msgstr "Helligkeit (%)"
