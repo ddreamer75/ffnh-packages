@@ -1,0 +1,4 @@
+config led 'main'
+        # option sysfs 'ubnt:blue:dome'   # will be set by Config-Mode
+        # option brightness '30'          # percent 0..100
+        # list off_leds 'ubnt:white:dome' # filled by Config-Mode for multi-color
