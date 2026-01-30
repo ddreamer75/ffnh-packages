@@ -1,0 +1,6 @@
+package "gluon-led-config"
+
+config "led"
+  option "sysfs"      string   (required)  # Name unter /sys/class/leds/<sysfs>
+  option "brightness" uinteger (required)  # Prozent 0..100
+  list   "off_leds"   string   (optional)  # weitere LEDs, die AUS sein sollen
