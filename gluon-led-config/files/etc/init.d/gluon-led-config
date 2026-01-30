@@ -1,0 +1,54 @@
+
+#!/bin/sh /etc/rc.common
+# Persistent LED color/brightness for Gluon/OpenWrt
+# Disables triggers and applies brightness in percent.
+
+START=95
+USE_PROCD=1
+
+. /lib/functions.sh
+
+switch_off_led() {
+  local led="$1"
+  [ -d "/sys/class/leds/$led" ] || return 0
+  echo none > "/sys/class/leds/$led/trigger" 2>/dev/null
+  echo 0    > "/sys/class/leds/$led/brightness" 2>/dev/null
+}
+
+apply_led() {
+  local led="$1" pct="$2"
+  [ -d "/sys/class/leds/$led" ] || return 0
+
+  # Ensure trigger won't override brightness
+  echo none > "/sys/class/leds/$led/trigger" 2>/dev/null
+
+  local max=255
+  [ -r "/sys/class/leds/$led/max_brightness" ] && \
+    max="$(cat "/sys/class/leds/$led/max_brightness" 2>/dev/null || echo 255)"
+
+  # Clamp pct to [0..100]
+  [ "$pct" -lt 0 ] && pct=0
+  [ "$pct" -gt 100 ] && pct=100
+
+  local val=$(( pct * max / 100 ))
+  echo "$val" > "/sys/class/leds/$led/brightness" 2>/dev/null
+}
+
+handle_section() {
+  local cfg="$1"
+  local sysfs brightness
+
+  config_get sysfs       "$cfg" sysfs
+  config_get brightness  "$cfg" brightness
+
+  # Switch off alternative color LEDs if defined
+  config_list_foreach "$cfg" off_leds switch_off_led
+
+  # Apply the configured LED
+  [ -n "$sysfs" ] && [ -n "$brightness" ] && apply_led "$sysfs" "$brightness"
+}
+
+start_service() {
+  config_load gluon-led-config
+  config_foreach handle_section led
+}
